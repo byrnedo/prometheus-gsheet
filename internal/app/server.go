@@ -5,6 +5,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/rs/zerolog/log"
 	"io/ioutil"
 	"net/http"
 
@@ -28,6 +29,8 @@ func (s *Server) ListenAndServe() error {
 		Addr:    s.Addr,
 		Handler: rtr,
 	}
+
+	log.Info().Msgf("server listening on %s", s.srv.Addr)
 
 	return s.srv.ListenAndServe()
 }
