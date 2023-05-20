@@ -1,7 +1,11 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"github.com/byrnedo/prometheus-gsheet/internal/app"
+	"github.com/byrnedo/prometheus-gsheet/internal/pkg"
+	"github.com/prometheus/common/model"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"net/http"
@@ -18,10 +22,19 @@ func envDefault(name string, deflt string) string {
 		return v
 	}
 }
+func mustEnv(name string) string {
+	if v, found := os.LookupEnv(name); !found {
+		panic("Missing environment variable: " + name)
+	} else {
+		return v
+	}
+}
 
 var (
-	cAddr      = envDefault("ADDR", ":4700")
-	cLogFormat = envDefault("LOG_FORMAT", "console")
+	cAddr          = envDefault("ADDR", ":4700")
+	cLogFormat     = envDefault("LOG_FORMAT", "console")
+	cCredentials   = mustEnv("CREDENTIALS")
+	cSpreadsheetID = mustEnv("SPREADSHEET_ID")
 )
 
 func init() {
@@ -42,8 +55,19 @@ func main() {
 		done <- 1
 	}()
 
+	sheetsSvc := pkg.NewClient(cSpreadsheetID, 0)
+
+	if err := sheetsSvc.Authenticate(context.Background(), cCredentials); err != nil {
+		panic(fmt.Sprintf("CREDENTIALS: %s", err))
+	}
+
 	// create server struct
-	server := app.Server{Addr: cAddr}
+	server := app.Server{Addr: cAddr, Queue: &pkg.Queue{
+		BufferSize:     5000,
+		Client:         sheetsSvc,
+		RequestTimeout: 10 * time.Second,
+		Chan:           make(chan *model.Sample, 10000),
+	}}
 
 	// listen
 	go func() {
@@ -52,7 +76,9 @@ func main() {
 				log.Err(err).Msgf("server error: %w", err)
 			}
 			done <- 2
+			return
 		}
+		done <- 0
 	}()
 
 	exitCode := <-done

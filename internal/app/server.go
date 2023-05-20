@@ -1,7 +1,7 @@
 package app
 
 import (
-	"fmt"
+	"github.com/byrnedo/prometheus-gsheet/internal/pkg"
 	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -19,6 +19,7 @@ type Server struct {
 	srv                 *http.Server
 	totalRequestsMetric prometheus.Counter
 	httpResponsesMetric *prometheus.CounterVec
+	Queue               *pkg.Queue
 }
 
 func (s *Server) ListenAndServe() error {
@@ -29,6 +30,12 @@ func (s *Server) ListenAndServe() error {
 		Addr:    s.Addr,
 		Handler: rtr,
 	}
+
+	go func() {
+		if err := s.Queue.ListenAndProcess(); err != nil {
+			log.Err(err)
+		}
+	}()
 
 	log.Info().Msgf("server listening on %s", s.srv.Addr)
 
@@ -76,7 +83,9 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 
 	samples := s.protoToSamples(&req)
 
-	fmt.Println(samples)
+	s.Queue.Put(samples)
+
+	log.Info().Msgf("received %d samples", len(samples))
 
 	return
 }
@@ -89,6 +98,9 @@ func (s *Server) router() http.Handler {
 }
 
 func (s Server) Close() error {
+	//if s.Queue != nil {
+	//	s.Queue.Close()
+	//}
 	if s.srv != nil {
 		return s.srv.Close()
 	}
