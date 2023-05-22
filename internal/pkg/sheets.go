@@ -17,6 +17,7 @@ type Client struct {
 	SpreadsheetID string
 	SheetID       int
 	rateLimiter   *rate.Limiter
+	extraLabels   *labelsColumns
 }
 
 func NewClient(spreadsheetID string, sheetID int) *Client {
@@ -24,6 +25,7 @@ func NewClient(spreadsheetID string, sheetID int) *Client {
 		SpreadsheetID: spreadsheetID,
 		SheetID:       sheetID,
 		rateLimiter:   rate.NewLimiter(rate.Every(1*time.Second), 60),
+		extraLabels:   &labelsColumns{},
 	}
 }
 
@@ -48,56 +50,129 @@ func (c *Client) Authenticate(ctx context.Context, base64Key string) error {
 	return nil
 }
 
-func (c *Client) Write(ctx context.Context, m model.Samples) error {
+func ref[T any](v T) *T {
+	return &v
+}
+
+func (c *Client) Write(ctx context.Context, samples model.Samples, makeRoom bool) error {
 
 	if err := c.rateLimiter.Wait(ctx); err != nil {
 		return err
 	}
 
-	rows := make([]*sheets.RowData, len(m))
+	rows := make([]*sheets.RowData, len(samples))
 
-	for i, s := range m {
-		tstampString := s.Timestamp.Time().Format(time.RFC3339Nano)
-		metricString := s.Metric.String()
-		valueFloat := float64(s.Value)
-		var valueFloatPtr *float64
-		if !math.IsNaN(valueFloat) {
-			valueFloatPtr = &valueFloat
-		}
+	for i, s := range samples {
+
+		values := sampleToCells(s, c.extraLabels)
 
 		rows[i] = &sheets.RowData{
-			Values: []*sheets.CellData{
-				{
-					UserEnteredValue: &sheets.ExtendedValue{
-						StringValue: &tstampString,
-					},
-				},
-				{
-					UserEnteredValue: &sheets.ExtendedValue{
-						StringValue: &metricString,
-					},
-				},
-				{
-					UserEnteredValue: &sheets.ExtendedValue{
-						NumberValue: valueFloatPtr,
-					},
-				},
-			},
+			Values: values,
 		}
 	}
 
-	call := c.svc.Spreadsheets.BatchUpdate(c.SpreadsheetID, &sheets.BatchUpdateSpreadsheetRequest{
+	req := &sheets.BatchUpdateSpreadsheetRequest{
 		IncludeSpreadsheetInResponse: false,
-		Requests: []*sheets.Request{
-			{
-				AppendCells: &sheets.AppendCellsRequest{
-					Fields:  "*",
-					Rows:    rows,
-					SheetId: int64(c.SheetID),
+	}
+
+	if makeRoom {
+		req.Requests = append(req.Requests, &sheets.Request{
+			DeleteDimension: &sheets.DeleteDimensionRequest{
+				Range: &sheets.DimensionRange{
+					Dimension:  "ROWS",
+					StartIndex: 0,
+					EndIndex:   int64(len(rows)),
+					SheetId:    int64(c.SheetID),
 				},
 			},
+		})
+	}
+
+	req.Requests = append(req.Requests, &sheets.Request{
+		AppendCells: &sheets.AppendCellsRequest{
+			Fields:  "*",
+			Rows:    rows,
+			SheetId: int64(c.SheetID),
 		},
 	})
+
+	call := c.svc.Spreadsheets.BatchUpdate(c.SpreadsheetID, req)
 	_, err := call.Context(ctx).Do()
 	return err
+}
+func sampleToCells(s *model.Sample, labelsMap *labelsColumns) (cells []*sheets.CellData) {
+
+	cells = append(cells, &sheets.CellData{
+		UserEnteredValue: &sheets.ExtendedValue{
+			StringValue: ref(s.Timestamp.Time().Format(time.RFC3339Nano)),
+		},
+	})
+
+	name, _ := s.Metric[model.MetricNameLabel]
+
+	cells = append(cells, &sheets.CellData{
+		UserEnteredValue: &sheets.ExtendedValue{
+			StringValue: ref(string(name)),
+		},
+	})
+
+	labelCells := make([]*sheets.CellData, 40)
+
+	// add labels at correct column
+	for k, v := range s.Metric {
+		if k == model.MetricNameLabel {
+			continue
+		}
+		cellData := &sheets.CellData{
+			UserEnteredValue: &sheets.ExtendedValue{
+				StringValue: ref(string(k) + ": " + string(v)),
+			},
+		}
+
+		colIndex := labelsMap.GetOrAdd(string(k))
+		if colIndex <= len(labelCells)-1 {
+			labelCells[colIndex] = cellData
+		}
+	}
+
+	// fill out empty cells
+	for i, lv := range labelCells {
+		if lv == nil {
+			labelCells[i] = &sheets.CellData{
+				UserEnteredValue: &sheets.ExtendedValue{
+					StringValue: ref(""),
+				},
+			}
+		}
+
+		if i == len(*labelsMap)-1 {
+			break
+		}
+	}
+
+	valueFloat := ref(float64(s.Value))
+	if math.IsNaN(*valueFloat) {
+		valueFloat = nil
+	}
+
+	cells = append(cells, &sheets.CellData{
+		UserEnteredValue: &sheets.ExtendedValue{
+			NumberValue: valueFloat,
+		},
+	})
+
+	return append(cells, labelCells...)
+
+}
+
+type labelsColumns []string
+
+func (l *labelsColumns) GetOrAdd(name string) int {
+	for i, n := range *l {
+		if n == name {
+			return i
+		}
+	}
+	*l = append(*l, name)
+	return len(*l) - 1
 }

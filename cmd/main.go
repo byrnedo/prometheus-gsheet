@@ -65,7 +65,7 @@ func main() {
 	server := app.Server{Addr: cAddr, Queue: &pkg.Queue{
 		BufferSize:     5000,
 		Client:         sheetsSvc,
-		RequestTimeout: 10 * time.Second,
+		RequestTimeout: 30 * time.Second,
 		Chan:           make(chan *model.Sample, 10000),
 	}}
 
