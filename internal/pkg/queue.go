@@ -70,7 +70,7 @@ func (q Queue) ListenAndProcess() error {
 			buf = append(buf, s)
 
 			if len(buf) == q.BufferSize {
-				log.Info().Msgf("buffer filled")
+				log.Debug().Msgf("buffer filled")
 				// send
 				flush()
 
@@ -81,7 +81,7 @@ func (q Queue) ListenAndProcess() error {
 			}
 
 		case <-timer.C:
-			log.Info().Msgf("timer triggered")
+			log.Debug().Msgf("flush timer triggered")
 			flush()
 			timer.Stop()
 			timer.Reset(cooldown)

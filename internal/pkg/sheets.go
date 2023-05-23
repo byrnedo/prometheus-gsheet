@@ -3,12 +3,14 @@ package pkg
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"github.com/prometheus/common/model"
 	"golang.org/x/oauth2/google"
 	"golang.org/x/time/rate"
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 	"math"
+	"strings"
 	"time"
 )
 
@@ -17,7 +19,6 @@ type Client struct {
 	SpreadsheetID string
 	SheetID       int
 	rateLimiter   *rate.Limiter
-	extraLabels   *labelsColumns
 }
 
 func NewClient(spreadsheetID string, sheetID int) *Client {
@@ -25,7 +26,6 @@ func NewClient(spreadsheetID string, sheetID int) *Client {
 		SpreadsheetID: spreadsheetID,
 		SheetID:       sheetID,
 		rateLimiter:   rate.NewLimiter(rate.Every(1*time.Second), 60),
-		extraLabels:   &labelsColumns{},
 	}
 }
 
@@ -62,9 +62,11 @@ func (c *Client) Write(ctx context.Context, samples model.Samples, makeRoom bool
 
 	rows := make([]*sheets.RowData, len(samples))
 
+	now := time.Now()
+
 	for i, s := range samples {
 
-		values := sampleToCells(s, c.extraLabels)
+		values := sampleToCells(now, s)
 
 		rows[i] = &sheets.RowData{
 			Values: values,
@@ -100,7 +102,13 @@ func (c *Client) Write(ctx context.Context, samples model.Samples, makeRoom bool
 	_, err := call.Context(ctx).Do()
 	return err
 }
-func sampleToCells(s *model.Sample, labelsMap *labelsColumns) (cells []*sheets.CellData) {
+func sampleToCells(now time.Time, s *model.Sample) (cells []*sheets.CellData) {
+
+	cells = append(cells, &sheets.CellData{
+		UserEnteredValue: &sheets.ExtendedValue{
+			StringValue: ref(now.Format(time.RFC3339Nano)),
+		},
+	})
 
 	cells = append(cells, &sheets.CellData{
 		UserEnteredValue: &sheets.ExtendedValue{
@@ -116,40 +124,6 @@ func sampleToCells(s *model.Sample, labelsMap *labelsColumns) (cells []*sheets.C
 		},
 	})
 
-	labelCells := make([]*sheets.CellData, 40)
-
-	// add labels at correct column
-	for k, v := range s.Metric {
-		if k == model.MetricNameLabel {
-			continue
-		}
-		cellData := &sheets.CellData{
-			UserEnteredValue: &sheets.ExtendedValue{
-				StringValue: ref(string(k) + ": " + string(v)),
-			},
-		}
-
-		colIndex := labelsMap.GetOrAdd(string(k))
-		if colIndex <= len(labelCells)-1 {
-			labelCells[colIndex] = cellData
-		}
-	}
-
-	// fill out empty cells
-	for i, lv := range labelCells {
-		if lv == nil {
-			labelCells[i] = &sheets.CellData{
-				UserEnteredValue: &sheets.ExtendedValue{
-					StringValue: ref(""),
-				},
-			}
-		}
-
-		if i == len(*labelsMap)-1 {
-			break
-		}
-	}
-
 	valueFloat := ref(float64(s.Value))
 	if math.IsNaN(*valueFloat) {
 		valueFloat = nil
@@ -161,18 +135,20 @@ func sampleToCells(s *model.Sample, labelsMap *labelsColumns) (cells []*sheets.C
 		},
 	})
 
-	return append(cells, labelCells...)
-
-}
-
-type labelsColumns []string
-
-func (l *labelsColumns) GetOrAdd(name string) int {
-	for i, n := range *l {
-		if n == name {
-			return i
+	dims := make([]string, len(s.Metric)-1)
+	for k, v := range s.Metric {
+		if k == model.MetricNameLabel {
+			continue
 		}
+		dims = append(dims, fmt.Sprintf("%s: %s", k, v))
 	}
-	*l = append(*l, name)
-	return len(*l) - 1
+
+	cells = append(cells, &sheets.CellData{
+		UserEnteredValue: &sheets.ExtendedValue{
+			StringValue: ref(strings.Join(dims, "\n")),
+		},
+	})
+
+	return cells
+
 }
