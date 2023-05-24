@@ -10,6 +10,7 @@ import (
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 	"math"
+	"sort"
 	"strings"
 	"time"
 )
@@ -106,13 +107,13 @@ func sampleToCells(now time.Time, s *model.Sample) (cells []*sheets.CellData) {
 
 	cells = append(cells, &sheets.CellData{
 		UserEnteredValue: &sheets.ExtendedValue{
-			StringValue: ref(now.Format(time.RFC3339Nano)),
+			NumberValue: ref(float64(now.Unix())),
 		},
 	})
 
 	cells = append(cells, &sheets.CellData{
 		UserEnteredValue: &sheets.ExtendedValue{
-			StringValue: ref(s.Timestamp.Time().Format(time.RFC3339Nano)),
+			NumberValue: ref(float64(s.Timestamp.Time().Unix())),
 		},
 	})
 
@@ -135,17 +136,19 @@ func sampleToCells(now time.Time, s *model.Sample) (cells []*sheets.CellData) {
 		},
 	})
 
-	dims := make([]string, len(s.Metric)-1)
+	dims := []string{}
 	for k, v := range s.Metric {
 		if k == model.MetricNameLabel {
 			continue
 		}
 		dims = append(dims, fmt.Sprintf("%s: %s", k, v))
 	}
+	sortedDims := sort.StringSlice(dims)
+	sortedDims.Sort()
 
 	cells = append(cells, &sheets.CellData{
 		UserEnteredValue: &sheets.ExtendedValue{
-			StringValue: ref(strings.Join(dims, "\n")),
+			StringValue: ref(strings.Join(sortedDims, "\n")),
 		},
 	})
 
