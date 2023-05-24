@@ -2,6 +2,7 @@ package app
 
 import (
 	"github.com/byrnedo/prometheus-gsheet/internal/pkg"
+	"github.com/fatih/color"
 	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -14,6 +15,8 @@ import (
 	"github.com/justinas/alice"
 	"github.com/prometheus/prometheus/prompb"
 )
+
+var bluePrint = color.New(color.FgBlue).SprintfFunc()
 
 type Server struct {
 	Addr                string
@@ -91,7 +94,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 
 	s.Queue.Put(samples)
 
-	log.Info().Msgf("received %d samples", len(samples))
+	log.Info().Msgf(bluePrint("received %d samples", len(samples)))
 
 	return
 }

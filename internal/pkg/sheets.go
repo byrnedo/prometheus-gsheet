@@ -194,6 +194,7 @@ func (c *Client) GetConfig(ctx context.Context) (*Config, error) {
 
 	return &conf, nil
 }
+
 func (c *Client) RetireMetrics(ctx context.Context) (int, error) {
 
 	sortReq := c.svc.Spreadsheets.BatchUpdate(c.SpreadsheetID, &sheets.BatchUpdateSpreadsheetRequest{

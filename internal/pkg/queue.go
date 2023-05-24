@@ -2,11 +2,17 @@ package pkg
 
 import (
 	"context"
+	"github.com/fatih/color"
 	"github.com/prometheus/common/model"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/exp/slices"
 	"strings"
 	"time"
+)
+
+var (
+	redPrint   = color.New(color.FgRed).SprintfFunc()
+	greenPrint = color.New(color.FgGreen).SprintfFunc()
 )
 
 type Queue struct {
@@ -63,7 +69,7 @@ func (q Queue) ListenAndProcess() error {
 	if err != nil {
 		return err
 	}
-	log.Info().Msgf("retired %d metrics", retired)
+	log.Info().Msgf(redPrint("retired %d metrics", retired))
 
 	flustTimerDur := 5 * time.Second
 	flushTimer := time.NewTimer(flustTimerDur)
@@ -81,7 +87,7 @@ func (q Queue) ListenAndProcess() error {
 		}
 		// send to google
 		eternalRetry(func() error {
-			log.Info().Msgf("sending request of %d", len(buf))
+			log.Info().Msgf(greenPrint("sending request of %d", len(buf)))
 			ctx, cncl := context.WithTimeout(context.Background(), q.RequestTimeout)
 			defer cncl()
 
@@ -136,7 +142,7 @@ func (q Queue) ListenAndProcess() error {
 				log.Err(err).Msgf("error trying to retire metrics: %s", err)
 				continue
 			} else {
-				log.Info().Msgf("retired %d metrics", retired)
+				log.Info().Msgf(redPrint("retired %d metrics", retired))
 			}
 
 		}

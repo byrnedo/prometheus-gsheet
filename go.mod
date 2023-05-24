@@ -3,6 +3,7 @@ module github.com/byrnedo/prometheus-gsheet
 go 1.20
 
 require (
+	github.com/fatih/color v1.15.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/snappy v0.0.4
 	github.com/justinas/alice v1.2.0
