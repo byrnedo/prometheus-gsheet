@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/prometheus/common/model"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/exp/slices"
 	"strings"
 	"time"
 )
@@ -30,6 +31,23 @@ func eternalRetry(op func() error, sleep time.Duration, attempt int) {
 	}
 }
 
+func (q Queue) getConfig(ctx context.Context) (*Config, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cncl := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cncl()
+
+	return q.Client.GetConfig(ctx)
+}
+
+func (q Queue) retireOldMetrics() (int, error) {
+
+	ctx, cncl := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cncl()
+	return q.Client.RetireMetrics(ctx)
+}
+
 func (q Queue) ListenAndProcess() error {
 	newBuf := func() []*model.Sample {
 		return make([]*model.Sample, 0, q.BufferSize)
@@ -37,8 +55,25 @@ func (q Queue) ListenAndProcess() error {
 
 	buf := newBuf()
 
-	cooldown := 5 * time.Second
-	timer := time.NewTimer(cooldown)
+	config, err := q.getConfig(nil)
+	if err != nil {
+		return err
+	}
+	retired, err := q.retireOldMetrics()
+	if err != nil {
+		return err
+	}
+	log.Info().Msgf("retired %d metrics", retired)
+
+	flustTimerDur := 5 * time.Second
+	flushTimer := time.NewTimer(flustTimerDur)
+	defer flushTimer.Stop()
+
+	confTicker := time.NewTicker(10 * time.Second)
+	defer confTicker.Stop()
+
+	cleanupTicker := time.NewTicker(20 * time.Second)
+	defer cleanupTicker.Stop()
 
 	flush := func() {
 		if len(buf) == 0 {
@@ -63,10 +98,15 @@ func (q Queue) ListenAndProcess() error {
 		}, 2*time.Second, 0)
 	}
 
-	defer timer.Stop()
 	for {
 		select {
 		case s := <-q.Chan:
+
+			metricName := strings.ToLower(string(s.Metric[model.MetricNameLabel]))
+			if !slices.Contains(config.Metrics, metricName) {
+				continue
+			}
+
 			buf = append(buf, s)
 
 			if len(buf) == q.BufferSize {
@@ -74,17 +114,32 @@ func (q Queue) ListenAndProcess() error {
 				// send
 				flush()
 
-				if !timer.Stop() {
-					<-timer.C
+				if !flushTimer.Stop() {
+					<-flushTimer.C
 				}
-				timer.Reset(cooldown)
+				flushTimer.Reset(flustTimerDur)
 			}
 
-		case <-timer.C:
+		case <-flushTimer.C:
 			log.Debug().Msgf("flush timer triggered")
 			flush()
-			timer.Stop()
-			timer.Reset(cooldown)
+			flushTimer.Stop()
+			flushTimer.Reset(flustTimerDur)
+		case <-confTicker.C:
+			log.Debug().Msgf("fetching config")
+			config, err = q.getConfig(nil)
+			if err != nil {
+				log.Err(err).Msgf("failed to get config: %s", err)
+			}
+		case <-cleanupTicker.C:
+			if retired, err := q.retireOldMetrics(); err != nil {
+				log.Err(err).Msgf("error trying to retire metrics: %s", err)
+				continue
+			} else {
+				log.Info().Msgf("retired %d metrics", retired)
+			}
+
 		}
+
 	}
 }

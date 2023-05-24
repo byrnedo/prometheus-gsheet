@@ -11,6 +11,7 @@ import (
 	"google.golang.org/api/sheets/v4"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -57,10 +58,6 @@ func ref[T any](v T) *T {
 
 func (c *Client) Write(ctx context.Context, samples model.Samples, makeRoom bool) error {
 
-	if err := c.rateLimiter.Wait(ctx); err != nil {
-		return err
-	}
-
 	rows := make([]*sheets.RowData, len(samples))
 
 	now := time.Now()
@@ -99,6 +96,9 @@ func (c *Client) Write(ctx context.Context, samples model.Samples, makeRoom bool
 		},
 	})
 
+	if err := c.rateLimiter.Wait(ctx); err != nil {
+		return err
+	}
 	call := c.svc.Spreadsheets.BatchUpdate(c.SpreadsheetID, req)
 	_, err := call.Context(ctx).Do()
 	return err
@@ -107,13 +107,13 @@ func sampleToCells(now time.Time, s *model.Sample) (cells []*sheets.CellData) {
 
 	cells = append(cells, &sheets.CellData{
 		UserEnteredValue: &sheets.ExtendedValue{
-			NumberValue: ref(float64(now.Unix())),
+			NumberValue: ref(float64(now.UTC().Unix())),
 		},
 	})
 
 	cells = append(cells, &sheets.CellData{
 		UserEnteredValue: &sheets.ExtendedValue{
-			NumberValue: ref(float64(s.Timestamp.Time().Unix())),
+			NumberValue: ref(float64(s.Timestamp.Time().UTC().Unix())),
 		},
 	})
 
@@ -154,4 +154,117 @@ func sampleToCells(now time.Time, s *model.Sample) (cells []*sheets.CellData) {
 
 	return cells
 
+}
+
+type Config struct {
+	Metrics     []string
+	RetireAfter time.Duration
+}
+
+func (c *Client) GetConfig(ctx context.Context) (*Config, error) {
+	if err := c.rateLimiter.Wait(ctx); err != nil {
+		return nil, err
+	}
+	req := c.svc.Spreadsheets.Values.Get(c.SpreadsheetID, "Config!A:B")
+	res, err := req.Context(ctx).Do()
+	if err != nil {
+		return nil, err
+	}
+
+	conf := Config{}
+	for _, row := range res.Values {
+		if len(row) < 2 {
+			continue
+		}
+		key := fmt.Sprintf("%s", row[0])
+		strVal := fmt.Sprintf("%s", row[1])
+		switch strings.ToUpper(key) {
+		case "METRICS":
+			val := strings.Split(strings.ToLower(strVal), "\n")
+			conf.Metrics = val
+		case "RETIRE_AFTER":
+			if val, err := time.ParseDuration(strings.ToLower(strVal)); err != nil {
+				conf.RetireAfter = 10 * time.Minute
+			} else {
+				conf.RetireAfter = val
+			}
+
+		}
+	}
+
+	return &conf, nil
+}
+func (c *Client) RetireMetrics(ctx context.Context) (int, error) {
+
+	sortReq := c.svc.Spreadsheets.BatchUpdate(c.SpreadsheetID, &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: []*sheets.Request{
+			{
+				SortRange: &sheets.SortRangeRequest{
+					Range: &sheets.GridRange{},
+					SortSpecs: []*sheets.SortSpec{
+						{
+							DimensionIndex: 0,
+							SortOrder:      "ASCENDING",
+						},
+					},
+				},
+			},
+		},
+		ResponseIncludeGridData: true,
+	})
+	if err := c.rateLimiter.Wait(ctx); err != nil {
+		return 0, err
+	}
+	_, err := sortReq.Context(ctx).Do()
+	if err != nil {
+		return 0, err
+	}
+
+	if err := c.rateLimiter.Wait(ctx); err != nil {
+		return 0, err
+	}
+	res, err := c.svc.Spreadsheets.Values.Get(c.SpreadsheetID, "Internal!B1").Context(ctx).Do()
+	if err != nil {
+		return 0, err
+	}
+
+	if len(res.Values) == 0 || len(res.Values[0]) == 0 {
+		return 0, nil
+	}
+
+	val := res.Values[0][0]
+	valStr := fmt.Sprintf("%s", val)
+
+	switch valStr {
+	case "#N/A":
+		return 0, nil
+	}
+
+	rowNumber, err := strconv.Atoi(valStr)
+	if err != nil {
+		return 0, err
+	}
+
+	if err := c.rateLimiter.Wait(ctx); err != nil {
+		return 0, err
+	}
+	_, err = c.svc.Spreadsheets.BatchUpdate(c.SpreadsheetID, &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: []*sheets.Request{
+			{
+				DeleteDimension: &sheets.DeleteDimensionRequest{
+					Range: &sheets.DimensionRange{
+						Dimension: "ROWS",
+						EndIndex:  int64(rowNumber),
+					},
+					ForceSendFields: nil,
+					NullFields:      nil,
+				},
+			},
+		},
+	}).Context(ctx).Do()
+	if err != nil {
+		return 0, nil
+	}
+
+	return rowNumber, nil
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"io/ioutil"
 	"net/http"
+	"time"
 
 	"github.com/golang/snappy"
 	"github.com/justinas/alice"
@@ -51,10 +52,15 @@ func (s *Server) protoToSamples(req *prompb.WriteRequest) model.Samples {
 		}
 
 		for _, s := range ts.Samples {
+			mt := model.Time(s.Timestamp)
+			if time.Since(mt.Time()) > 5*time.Minute {
+				// skipping since too old
+				continue
+			}
 			samples = append(samples, &model.Sample{
 				Metric:    metric,
 				Value:     model.SampleValue(s.Value),
-				Timestamp: model.Time(s.Timestamp),
+				Timestamp: mt,
 			})
 		}
 	}
