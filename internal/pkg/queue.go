@@ -133,9 +133,10 @@ func (q Queue) ListenAndProcess() error {
 			flushTimer.Reset(flustTimerDur)
 		case <-confTicker.C:
 			log.Debug().Msgf("fetching config")
-			config, err = q.getConfig(nil)
-			if err != nil {
+			if updConf, err := q.getConfig(nil); err != nil {
 				log.Err(err).Msgf("failed to get config: %s", err)
+			} else {
+				config = updConf
 			}
 		case <-cleanupTicker.C:
 			if retired, err := q.retireOldMetrics(); err != nil {

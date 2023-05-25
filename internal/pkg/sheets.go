@@ -246,6 +246,11 @@ func (c *Client) RetireMetrics(ctx context.Context) (int, error) {
 		return 0, err
 	}
 
+	rowNumber--
+	if rowNumber <= 0 {
+		return 0, nil
+	}
+
 	if err := c.rateLimiter.Wait(ctx); err != nil {
 		return 0, err
 	}
