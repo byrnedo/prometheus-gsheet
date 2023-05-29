@@ -75,7 +75,7 @@ func (q Queue) ListenAndProcess() error {
 	flushTimer := time.NewTimer(flustTimerDur)
 	defer flushTimer.Stop()
 
-	confTicker := time.NewTicker(10 * time.Second)
+	confTicker := time.NewTicker(1 * time.Minute)
 	defer confTicker.Stop()
 
 	cleanupTicker := time.NewTicker(20 * time.Second)
