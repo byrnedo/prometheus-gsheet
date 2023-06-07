@@ -55,11 +55,8 @@ func (q Queue) retireOldMetrics() (int, error) {
 }
 
 func (q Queue) ListenAndProcess() error {
-	newBuf := func() []*model.Sample {
-		return make([]*model.Sample, 0, q.BufferSize)
-	}
 
-	buf := newBuf()
+	buf := make([]*model.Sample, 0, q.BufferSize)
 
 	config, err := q.getConfig(nil)
 	if err != nil {
@@ -99,7 +96,9 @@ func (q Queue) ListenAndProcess() error {
 				log.Err(err).Msgf("failed to send to google sheets: %s", err)
 				return err
 			}
-			buf = newBuf()
+			log.Info().Msgf(greenPrint("successfully sent"))
+
+			buf = make([]*model.Sample, 0, q.BufferSize)
 			return nil
 		}, 2*time.Second, 0)
 	}

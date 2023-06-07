@@ -9,6 +9,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -66,8 +67,11 @@ func main() {
 		BufferSize:     500,
 		Client:         sheetsSvc,
 		RequestTimeout: 120 * time.Second,
-		Chan:           make(chan *model.Sample, 10000),
+		Chan:           make(chan *model.Sample, 500),
 	}}
+	go func() {
+		_ = http.ListenAndServe(":6060", nil)
+	}()
 
 	// listen
 	go func() {

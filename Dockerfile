@@ -7,8 +7,7 @@ RUN apk update && apk add --no-cache git ca-certificates upx && update-ca-certif
 
 COPY . .
 RUN --mount=type=cache,target=/root/.cache/go-build \
-    go build -ldflags="-w -s" -o binary  ./cmd
-    #&& upx --brute binary
+    go build -ldflags="-w -s" -o binary  ./cmd #&& upx --brute binary
 
 # Runtime
 FROM scratch

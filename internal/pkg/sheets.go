@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"github.com/prometheus/common/model"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2/google"
 	"golang.org/x/time/rate"
 	"google.golang.org/api/option"
@@ -157,8 +158,8 @@ func sampleToCells(now time.Time, s *model.Sample) (cells []*sheets.CellData) {
 }
 
 type Config struct {
-	Metrics     []string
-	RetireAfter time.Duration
+	Metrics        []string
+	RetireUntilRow int
 }
 
 func (c *Client) GetConfig(ctx context.Context) (*Config, error) {
@@ -182,13 +183,13 @@ func (c *Client) GetConfig(ctx context.Context) (*Config, error) {
 		case "METRICS":
 			val := strings.Split(strings.ToLower(strVal), "\n")
 			conf.Metrics = val
-		case "RETIRE_AFTER":
-			if val, err := time.ParseDuration(strings.ToLower(strVal)); err != nil {
-				conf.RetireAfter = 10 * time.Minute
+		case "RETIRE_UNTIL_ROW":
+			if val, err := strconv.Atoi(strVal); err != nil {
+				log.Ctx(ctx).Err(err).Msgf("failed to parse %q as int for RETIRE_UNTIL_ROW", strVal)
+				conf.RetireUntilRow = 1
 			} else {
-				conf.RetireAfter = val
+				conf.RetireUntilRow = val
 			}
-
 		}
 	}
 
@@ -221,31 +222,12 @@ func (c *Client) RetireMetrics(ctx context.Context) (int, error) {
 		return 0, err
 	}
 
-	if err := c.rateLimiter.Wait(ctx); err != nil {
-		return 0, err
-	}
-	res, err := c.svc.Spreadsheets.Values.Get(c.SpreadsheetID, "Internal!B1").Context(ctx).Do()
+	conf, err := c.GetConfig(ctx)
 	if err != nil {
 		return 0, err
 	}
 
-	if len(res.Values) == 0 || len(res.Values[0]) == 0 {
-		return 0, nil
-	}
-
-	val := res.Values[0][0]
-	valStr := fmt.Sprintf("%s", val)
-
-	switch valStr {
-	case "#N/A":
-		return 0, nil
-	}
-
-	rowNumber, err := strconv.Atoi(valStr)
-	if err != nil {
-		return 0, err
-	}
-
+	rowNumber := conf.RetireUntilRow
 	rowNumber--
 	if rowNumber <= 0 {
 		return 0, nil

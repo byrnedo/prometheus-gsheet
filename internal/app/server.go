@@ -4,6 +4,7 @@ import (
 	"github.com/byrnedo/prometheus-gsheet/internal/pkg"
 	"github.com/fatih/color"
 	"github.com/gogo/protobuf/proto"
+	"github.com/julienschmidt/httprouter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/rs/zerolog/log"
@@ -101,8 +102,8 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) router() http.Handler {
 
-	m := http.NewServeMux()
-	m.Handle("/", alice.New(metricsMiddleware()).ThenFunc(s.handle))
+	m := httprouter.New()
+	m.Handler("POST", "/", alice.New(metricsMiddleware()).ThenFunc(s.handle))
 	return m
 }
 
