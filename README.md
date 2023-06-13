@@ -9,7 +9,7 @@ Remote write to google sheets
 - LISTEN - the address to listen to, defaults to :4700
 - CREDENTIALS - **required**: base64 credentials.json for google api
 - SPREADSHEET_ID - **required**: the hash id from the google sheet url (i.e. the last bit
-  from https://docs.google.com/spreadsheets/d/1Wm55yV6TUN74Yjw4ButU52AUUUzA6Xkh2rfN2t0YD3Y)
+  from `https://docs.google.com/spreadsheets/d/1Wm55yV6TUN74Yjw4ButU52AUUUzA6Xkh2rfN2t0YD3Y`)
 
 ## Sheet columns
 
