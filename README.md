@@ -2,6 +2,8 @@
 
 Remote write to google sheets
 
+![img.png](docs/dashboard.png)
+
 ## Config
 
 - LISTEN - the address to listen to, defaults to :4700
@@ -32,6 +34,14 @@ Prometheus-gsheet will push metrics to the first sheet of the supplied document.
 The template sheet includes alerting via slack.
 You'll need to supply a slack webhook url in order for that to work (in the `Config` sheet)
 
+Also, the `buildReport` function in the apps scripts needs a trigger (in this case every 5 minutes):
+
+![img.png](docs/trigger-menu.png)
+
+![img.png](docs/trigger-menu-2.png)
+
+![img.png](docs/trigger.png)
+
 ## Custom Sheet Functions
 
 In order to be able to graph and alert on things like cpu, the following sheet functions are available via appsscript:
@@ -42,6 +52,9 @@ In order to be able to graph and alert on things like cpu, the following sheet f
 - TS_AVERAGE - averages over the timeseries
 
 Most of these functions work with or produce results where the first column is a unix timestamp.
+
+**Note**: 
+These functions are a bit of a hack to say the least. YMMV.
 
 ## Roadmap
 
