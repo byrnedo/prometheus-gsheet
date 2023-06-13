@@ -34,6 +34,8 @@ Prometheus-gsheet will push metrics to the first sheet of the supplied document.
 The template sheet includes alerting via slack.
 You'll need to supply a slack webhook url in order for that to work (in the `Config` sheet)
 
+![img.png](docs/slack-alert.png)
+
 Also, the `buildReport` function in the apps scripts needs a trigger (in this case every 5 minutes):
 
 ![img.png](docs/trigger-menu.png)
