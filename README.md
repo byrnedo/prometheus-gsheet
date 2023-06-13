@@ -4,12 +4,25 @@ Remote write to google sheets
 
 ![img.png](docs/dashboard.png)
 
+Turns out to work pretty well for a homelab setup.
+
 ## Config
 
 - LISTEN - the address to listen to, defaults to :4700
 - CREDENTIALS - **required**: base64 credentials.json for google api
 - SPREADSHEET_ID - **required**: the hash id from the google sheet url (i.e. the last bit
   from `https://docs.google.com/spreadsheets/d/1Wm55yV6TUN74Yjw4ButU52AUUUzA6Xkh2rfN2t0YD3Y`)
+
+On the prometheus side, you need to add something like the following to `prometheus.yml`:
+
+```yaml
+remote_write:
+- name: ghseets
+  url: http://gsheets:4700/
+```
+
+See [the prometheus docs](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write) for more config
+options.
 
 ## Sheet columns
 
@@ -20,7 +33,6 @@ Are, in order from left to right:
 - Metric name
 - Metric value
 - Metric dimensions
-
 
 ## Example Google Sheet
 
@@ -48,14 +60,14 @@ Also, the `buildReport` function in the apps scripts needs a trigger (in this ca
 
 In order to be able to graph and alert on things like cpu, the following sheet functions are available via appsscript:
 
-- TS_GROUPBY -  allows grouping by a dimension
+- TS_GROUPBY - allows grouping by a dimension
 - TS_RATE - sort of like `rate` in prometheus, useful for calculating cpu usage
 - TS_DATETIME - maps first column in result from unix timestamp to a date time
 - TS_AVERAGE - averages over the timeseries
 
 Most of these functions work with or produce results where the first column is a unix timestamp.
 
-**Note**: 
+**Note**:
 These functions are a bit of a hack to say the least. YMMV.
 
 ## Roadmap
